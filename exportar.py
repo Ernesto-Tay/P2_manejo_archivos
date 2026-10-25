@@ -41,14 +41,33 @@ class pdf_maker:
         # imprime los encabezados
         pdf.setFont(self.formato_encabezado[0], self.formato_encabezado[1])
         pdf.drawString(self.ancho_id, y, "ID")
-        for id, datos in self.datos:
-            
-            
+        pdf.drawString(self.ancho_nombre, y, "NOMBRE")
+        pdf.drawString(self.ancho_telefono, y, "TELÉFONO")
+        pdf.drawString(self.ancho_correo, y, "CORREO ELECTRÓNICO")
+        pdf.drawString(self.ancho_ciudad, y, "CIUDAD")
+        Y -= self.formato_encabezado[2]
+        pdf.setFont(self.formato_normal[0], self.formato_normal[1])
 
-            if self.altura < 50:
+        # imprime los datos, entrada por entrada (de acuerdo con el orden del JSON, basado en el orden de entrada)
+        for id, datos in self.datos:
+            pdf.drawString(self.ancho_id, y, str(id))
+            pdf.drawString(self.ancho_nombre, y, datos["nombre"])
+            pdf.drawString(self.ancho_telefono, y, str(datos["telefono"]))
+            pdf.drawString(self.ancho_correo, y, datos["correo"])
+            pdf.drawString(self.ancho_ciudad, y, datos["ciudad"])
+            y -= self.formato_normal[2]
+
+            if y < 50:
                 pdf.showPage()
                 y=self.altura
                 pdf.setFont(self.formato_encabezado[0], self.formato_encabezado[1])
+                pdf.drawString(self.ancho_id, y, "ID")
+                pdf.drawString(self.ancho_nombre, y, "NOMBRE")
+                pdf.drawString(self.ancho_telefono, y, "TELÉFONO")
+                pdf.drawString(self.ancho_correo, y, "CORREO ELECTRÓNICO")
+                pdf.drawString(self.ancho_ciudad, y, "CIUDAD")
+                Y -= self.formato_encabezado[2]
+                pdf.setFont(self.formato_normal[0], self.formato_normal[1])
 
 
 
