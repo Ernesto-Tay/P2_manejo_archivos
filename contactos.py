@@ -4,7 +4,6 @@ FUNCIONES:
 - Buscar contactos por ID
 - Modificar contacto
 
-
 cada contacto tiene: ID, Nombre, Teléfono, Correo, Ciudad
 Largo de los registros: 100 en total (4, 32, 4, 30, 30)
 Se rellenan con espacios en blanco
