@@ -45,7 +45,7 @@ class pdf_maker:
         pdf.drawString(self.ancho_telefono, y, "TELÉFONO")
         pdf.drawString(self.ancho_correo, y, "CORREO ELECTRÓNICO")
         pdf.drawString(self.ancho_ciudad, y, "CIUDAD")
-        Y -= self.formato_encabezado[2]
+        y -= self.formato_encabezado[2]
         pdf.setFont(self.formato_normal[0], self.formato_normal[1])
 
         # imprime los datos, entrada por entrada (de acuerdo con el orden del JSON, basado en el orden de entrada)
@@ -66,7 +66,7 @@ class pdf_maker:
                 pdf.drawString(self.ancho_telefono, y, "TELÉFONO")
                 pdf.drawString(self.ancho_correo, y, "CORREO ELECTRÓNICO")
                 pdf.drawString(self.ancho_ciudad, y, "CIUDAD")
-                Y -= self.formato_encabezado[2]
+                y -= self.formato_encabezado[2]
                 pdf.setFont(self.formato_normal[0], self.formato_normal[1])
 
 

@@ -12,3 +12,19 @@ para la información del sistema, deben verse los metadatos del archivo (fecha c
 
 
 """
+from hashlib import sha256
+from pathlib import Path
+import zipfile
+from datetime import datetime
+class Herramientas:
+    def __init__(self):
+        self.backups_carpeta = Path("respaldos")
+        self.hash_backup = "backup_hash.txt"
+
+    def hacer_backup(self): pass
+
+    def evaluar_backup(self): pass
+
+    def extraer_info_del_backup(self): pass
+
+    
