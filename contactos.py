@@ -63,11 +63,11 @@ class ContactosMng:
             a.read()
             n_entrada = a.tell() / self.tamano_registro
             self.info[id] = n_entrada
-            a.write("<I", id)
-            a.write("<32S", n_nombre)
-            a.write("<I", tel)
-            a.write("<30s", n_correo)
-            a.write("<30s", n_ciudad)
+            a.write(struct.pack("<I", id))
+            a.write(struct.pack("<32S", n_nombre))
+            a.write(struct.pack("<I", tel))
+            a.write(struct.pack("<30s", n_correo))
+            a.write(struct.pack("<30s", n_ciudad))
 
 
     def modificar_entrada(self, id: int, nombre: str, tel: int, correo: str, ciudad: str):
@@ -80,11 +80,11 @@ class ContactosMng:
         carpeta_datos = Path("info")
         with open(carpeta_datos / "contactos.dat", "r+b") as a:
             a.seek(posc)
-            a.write("<I", id)
-            a.write("<32S", n_nombre)
-            a.write("<I", tel)
-            a.write("<30s", n_correo)
-            a.write("<30s", n_ciudad)
+            a.write(struct.pack("<I", id))
+            a.write(struct.pack("<32S", n_nombre))
+            a.write(struct.pack("<I", tel))
+            a.write(struct.pack("<30s", n_correo))
+            a.write(struct.pack("<30s", n_ciudad))
 
 
     def obtener_entrada(self, id):

@@ -26,7 +26,7 @@ para la información del sistema (del archivo BIN con los contactos), deben vers
 """
 from hashlib import sha256
 from pathlib import Path
-import zipfile
+import zipfile, stat
 import os
 from datetime import datetime
 class Herramientas:
