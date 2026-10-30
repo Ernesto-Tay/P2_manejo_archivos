@@ -628,3 +628,10 @@ class Sistema(QMainWindow):
 
     def aplicar_tema(self):
         QApplication.instance().setStyleSheet(self.tema_manager.generar_qss(self.modo))
+
+
+
+app = QApplication(sys.argv)
+system = Sistema()
+system.show()
+sys.exit(app.exec())

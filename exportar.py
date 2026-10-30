@@ -15,7 +15,7 @@ class pdf_maker:
         self.ancho_id = 100
         self.ancho_nombre = 150
         self.ancho_telefono = 250
-        self.archo_correo = 300
+        self.ancho_correo = 300
         self.ancho_ciudad = 400
         self.formato_titulo = ["Helvetica-Bold", 20, 30]
         self.formato_encabezado = ["Helvetica-BoldOblique", 15, 20]
