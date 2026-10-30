@@ -30,7 +30,7 @@ class pdf_maker:
     def formatear_pdf(self):
         """ Crea el PDF de empleados. Es necesario crear el JSON de empleados y pasarlo como diccionario a \"self.datos\" para el funcionamiento. De lo contrario, esta función no hará nada."""
         if not self.tener_datos(): return
-        pdf = canvas.Canvas("Reporte_contactos.pdf", pagesize = letter, initialFontName = "Helvetica", initialFontSize = 12)
+        pdf = canvas.Canvas("Reporte_contactos.pdf", pagesize = letter, initialFontSize = 12)
         y = self.altura
 
         # imprime el título del reporte
