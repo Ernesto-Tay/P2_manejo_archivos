@@ -110,7 +110,9 @@ class ContactosMng:
             posc = 0
             while True:
                 a.seek(posc)
+
                 e_id = a.read(4).decode("utf-8")
+                if not e_id: break
                 nombre = a.read(32).decode("utf-8").rstrip()
                 telefono = a.read(4).decode("utf-8").rstrip()
                 correo = a.read(30).decode("utf-8").rstrip()
@@ -122,6 +124,7 @@ class ContactosMng:
                     "correo": correo,
                     "ciudad": ciudad
                 }
+
 
         with open(carpeta_datos / "registros.json", "w", encoding = "utf-8") as j:
             json.dump(resultado, j, indent = 4, ensure_ascii=False)
