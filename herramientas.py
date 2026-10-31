@@ -31,13 +31,15 @@ import os
 from datetime import datetime
 class Herramientas:
     def __init__(self):
+        # ContactosMng y pdf_maker guardan todo dentro de la carpeta "info"
+        carpeta_datos = Path("info")
         self.backups_carpeta = Path("respaldos")
         self.hash_backup = "backup_hash.txt"
-        self.archivo_bin = Path("contactos.dat")
-        self.archivo_ids = Path("indice.json")
-        self.archivo_contactos = Path("registros.json")  # opcional
-        self.archivo_reporte = Path("Reporte_contactos.pdf")  # opcional
-        self.archivo_hash = Path("datos.sha256")
+        self.archivo_bin = carpeta_datos / "contactos.dat"
+        self.archivo_ids = carpeta_datos / "indice.json"
+        self.archivo_contactos = carpeta_datos / "registros.json"  # opcional
+        self.archivo_reporte = carpeta_datos / "reporte_contactos.pdf"  # opcional
+        self.archivo_hash = carpeta_datos / "datos.sha256"
 
     @staticmethod
     def _calcular_hash(ruta):

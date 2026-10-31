@@ -1,5 +1,10 @@
 import sys
 import os
+import shutil
+from exportar import pdf_maker
+from contactos import ContactosMng
+from herramientas import Herramientas
+
 """
 Modo claro: sección de strings donde se contengan los colores usados para este modo, y que en el guardado se mantenga, así igual con el modo oscuro
 Selección de colores: una serie de códigos de color que se implementarán en función del seleccionado por el usuario, y se actualizarán como tal
@@ -12,30 +17,34 @@ Para el nombre de usuario se podrá escribir texto, que no sea ni NULO ni de un 
 El guardado se hará en JSON con el fin de conservar los tipos de valor almacenados.
 
 """
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QStackedWidget, QVBoxLayout,QGroupBox, QPushButton, QLabel, QLineEdit, QHBoxLayout, QFileDialog, QMessageBox, QTextEdit, QTabWidget, QFormLayout,)
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QStackedWidget, QVBoxLayout, QGroupBox, QPushButton,
+                             QLabel, QLineEdit, QHBoxLayout, QFileDialog, QMessageBox, QTextEdit, QTabWidget,
+                             QFormLayout, )
 from PyQt6.QtGui import QGuiApplication, QAction
 from PyQt6.QtCore import Qt, pyqtSignal
 from pathlib import Path
+
+
 class ColoresConfig:
     def __init__(self):
         self.temas = {
-                "claro": {
-                    "fondo":         "#f4f6fa",
-                    "fondo_tarjeta": "#ffffff",
-                    "borde":         "#d9dee6",
-                    "acento":        "#1E1700",
-                    "acento_hover":  "#c0532f",
-                },
-                "oscuro": {
-                    "fondo":         "#1e2128",
-                    "fondo_tarjeta": "#2a2e37",
-                    "borde":         "#3a3f4b",
-                    "acento":        "#910f0f",
-                    "acento_hover":  "#993131",
+            "claro": {
+                "fondo": "#f4f6fa",
+                "fondo_tarjeta": "#ffffff",
+                "borde": "#d9dee6",
+                "acento": "#1E1700",
+                "acento_hover": "#c0532f",
+            },
+            "oscuro": {
+                "fondo": "#1e2128",
+                "fondo_tarjeta": "#2a2e37",
+                "borde": "#3a3f4b",
+                "acento": "#910f0f",
+                "acento_hover": "#993131",
             },
         }
-        self.color_menu = {"claro": "#E05D00", "oscuro":"#ff0000"}
-        self.color_letra = {"claro": "#000000", "oscuro":"#e6e8ec"}
+        self.color_menu = {"claro": "#E05D00", "oscuro": "#ff0000"}
+        self.color_letra = {"claro": "#000000", "oscuro": "#e6e8ec"}
         self.tamano_letra = 12
 
     def set_color_menu(self, mode, color):
@@ -47,10 +56,10 @@ class ColoresConfig:
     def tamanos(self):
         base = self.tamano_letra
         return {
-            "titulo":    base + 6,   
-            "subtitulo": base + 3,  
-            "texto":     base,     
-            "boton":     base - 1,
+            "titulo": base + 6,
+            "subtitulo": base + 3,
+            "texto": base,
+            "boton": base - 1,
         }
 
     def legibilidad(self, hex_fondo):
@@ -59,7 +68,7 @@ class ColoresConfig:
         luminancia = (0.299 * r + 0.587 * g + 0.114 * b) / 255
 
         return "#000000" if luminancia > 0.5 else "#ffffff"
-        
+
     def generar_qss(self, mode):
         colores = self.temas[mode]
         menu = self.color_menu[mode]
@@ -108,14 +117,14 @@ class ColoresConfig:
             color: {texto};
             border: 1px solid {colores['borde']};
             }}
-        
+
         QComboBox QAbstractItemView {{
             color: {texto};
             background-color: {colores['fondo_tarjeta']};
             selection-background-color: {colores['acento']};
             selection-color: white;
         }}
-        
+
         QSpinBox {{
             background-color: {colores['fondo_tarjeta']};
             color: {texto};
@@ -181,112 +190,178 @@ def crear_titulo(texto):
 
 class GestorContactos:
     """
-    Todas las funciones devuelven (ok, mensaje, datos).
-    Por ahora son "stubs": devuelven False + aviso de pendiente, para que la
-    interfaz funcione y puedas probarla antes de tener la lógica lista.
+    Conecta la interfaz con las clases de datos (ContactosMng, pdf_maker y
+    Herramientas). Todas las funciones devuelven (ok, mensaje, datos).
     """
+    CARPETA = Path("info")
+    JSON_REGISTROS = CARPETA / "registros.json"  # lo escribe ContactosMng.generar_json()
+    PDF_REPORTE = CARPETA / "reporte_contactos.pdf"  # lo escribe pdf_maker.formatear_pdf()
+    TEL_MAX = 2 ** 32 - 1  # el teléfono se guarda como entero sin signo de 4 bytes
+    MSG_TELEFONO = ("El teléfono solo puede llevar dígitos, espacios y guiones, "
+                    f"y no puede superar {TEL_MAX}.")
 
-    def __init__(self, archivo_bin="contactos.bin"):
-        self.archivo_bin = Path(archivo_bin)
+    def __init__(self):
+        self.contactos = ContactosMng()
+        self.exportador = pdf_maker()
+        self.herramientas = Herramientas()
 
-    def _pendiente(self, nombre):
-        return (False, f"Función '{nombre}' pendiente de implementar", None)
+        self.error_carga = None
+        try:
+            self.contactos.cargar_posiciones()
+        except (ValueError, OSError) as e:  # índice dañado o ilegible
+            self.error_carga = str(e)
+        if self.contactos.info is None and self.error_carga is None:
+            self.contactos.info = {}  # primera ejecución: todavía no hay índice
+
+    # ================================================================
+    # UTILIDADES INTERNAS
+    # ================================================================
+    def _bloqueado(self):
+        """Si el índice no se pudo cargar, no se puede operar con los contactos."""
+        if self.error_carga:
+            return (False, f"No se pudo cargar el índice de contactos: {self.error_carga}", None)
+        return None
+
+    def _sellar_hash(self):
+        """Actualiza el hash SHA-256 tras cambiar los datos. Devuelve '' si todo salió bien,
+        o un aviso para añadir al mensaje si el hash no se pudo actualizar."""
+        ok, msg, _ = self.herramientas.actualizar_hash()
+        return "" if ok else f" (aviso: {msg})"
+
+    def _telefono_a_int(self, texto):
+        """'5555-1234' -> 55551234. Devuelve None si no es un teléfono válido."""
+        limpio = texto.replace(" ", "").replace("-", "")
+        if not (limpio.isascii() and limpio.isdigit()):
+            return None
+        valor = int(limpio)
+        return valor if valor <= self.TEL_MAX else None
+
+    @staticmethod
+    def _id_a_int(texto):
+        try:
+            return int(texto)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _contacto_a_dict(e_id, nombre, telefono, correo, ciudad):
+        return {"id": e_id, "nombre": nombre, "telefono": telefono,
+                "correo": correo, "ciudad": ciudad}
+
+    def _copiar_a(self, origen, destino, verbo):
+        """Copia un archivo generado en info/ a la ruta que eligió el usuario."""
+        destino = Path(destino)
+        try:
+            if destino.resolve() != origen.resolve():
+                shutil.copyfile(origen, destino)
+        except OSError as e:
+            return (False, f"No se pudo guardar en {destino}: {e}", None)
+        return (True, f"{verbo} {destino}",
+                {"ruta": str(destino), "total_contactos": len(self.contactos.info)})
 
     # ================================================================
     # CONTACTOS
     # ================================================================
+    def agregar_contacto(self, nombre, telefono, correo, ciudad):
+        """El ID no lo escribe el usuario: se asigna el siguiente número libre."""
+        bloqueo = self._bloqueado()
+        if bloqueo:
+            return bloqueo
+        tel = self._telefono_a_int(telefono)
+        if tel is None:
+            return (False, self.MSG_TELEFONO, None)
 
-    # ----------------------------------------------------------------
-    # >>> IMPLEMENTAR [1/8]: agregar_contacto
-    # Recibe:   nombre (str), telefono (str), correo (str)
-    # Debe:     asignar un ID único, guardar el contacto en self.archivo_bin
-    # Devuelve: (True, "Contacto agregado", {"id": ..., "nombre": ..., ...})
-    #           (False, "motivo del error", None)
-    # ----------------------------------------------------------------
-    def agregar_contacto(self, nombre, telefono, correo):
-        return self._pendiente("agregar_contacto")
+        nuevo_id = max(self.contactos.info, default=0) + 1
+        ok, msg, _ = self.contactos.anadir_entrada(nuevo_id, nombre, tel, correo, ciudad)
+        if not ok:
+            return (False, msg, None)
 
-    # ----------------------------------------------------------------
-    # >>> IMPLEMENTAR [2/8]: buscar_por_id
-    # Recibe:   id_contacto (str)
-    # Debe:     localizar el contacto con ese ID en self.archivo_bin
-    # Devuelve: (True, "Contacto encontrado", {"id":..., "nombre":..., "telefono":..., "correo":...})
-    #           (False, "No existe un contacto con ese ID", None)
-    # ----------------------------------------------------------------
+        aviso = self._sellar_hash()
+        return (True, f"Contacto agregado con el ID {nuevo_id}{aviso}",
+                self._contacto_a_dict(nuevo_id, nombre, tel, correo, ciudad))
+
     def buscar_por_id(self, id_contacto):
-        return self._pendiente("buscar_por_id")
+        bloqueo = self._bloqueado()
+        if bloqueo:
+            return bloqueo
+        id_int = self._id_a_int(id_contacto)
+        if id_int is None:
+            return (False, "El ID debe ser un número entero", None)
 
-    # ----------------------------------------------------------------
-    # >>> IMPLEMENTAR [3/8]: modificar_contacto
-    # Recibe:   id_contacto (str), nuevos_datos (dict)
-    #           nuevos_datos solo trae las claves que el usuario quiso cambiar,
-    #           por ejemplo {"telefono": "5555-1234"} o {"nombre": "Ana", "correo": "a@x.com"}
-    # Debe:     actualizar el registro y guardar el archivo
-    # Devuelve: (True, "Contacto modificado", {datos ya actualizados})
-    #           (False, "motivo del error", None)
-    # ----------------------------------------------------------------
+        ok, msg, registro = self.contactos.obtener_entrada(id_int)
+        if not ok:
+            return (False, msg, None)
+        return (True, msg, self._contacto_a_dict(*registro))
+
     def modificar_contacto(self, id_contacto, nuevos_datos):
-        return self._pendiente("modificar_contacto")
+        """ContactosMng reescribe el registro completo, así que primero se leen los
+        datos actuales y se mezclan con los campos que el usuario quiso cambiar."""
+        bloqueo = self._bloqueado()
+        if bloqueo:
+            return bloqueo
+        id_int = self._id_a_int(id_contacto)
+        if id_int is None:
+            return (False, "El ID debe ser un número entero", None)
+
+        ok, msg, registro = self.contactos.obtener_entrada(id_int)
+        if not ok:
+            return (False, msg, None)
+        _, nombre, telefono, correo, ciudad = registro
+
+        nombre = nuevos_datos.get("nombre", nombre)
+        correo = nuevos_datos.get("correo", correo)
+        ciudad = nuevos_datos.get("ciudad", ciudad)
+        if "telefono" in nuevos_datos:
+            telefono = self._telefono_a_int(nuevos_datos["telefono"])
+            if telefono is None:
+                return (False, self.MSG_TELEFONO, None)
+
+        ok, msg, _ = self.contactos.modificar_entrada(id_int, nombre, telefono, correo, ciudad)
+        if not ok:
+            return (False, msg, None)
+
+        aviso = self._sellar_hash()
+        return (True, f"Contacto modificado{aviso}",
+                self._contacto_a_dict(id_int, nombre, telefono, correo, ciudad))
 
     # ================================================================
     # EXPORTAR
     # ================================================================
-
-    # ----------------------------------------------------------------
-    # >>> IMPLEMENTAR [4/8]: exportar_json
-    # Recibe:   ruta_destino (str) -> ruta elegida por el usuario (.json)
-    # Debe:     leer todos los contactos y escribirlos como JSON en esa ruta
-    #           (sugerencia: módulo json, indent=4, ensure_ascii=False)
-    # Devuelve: (True, "Exportado a ...", {"ruta": ..., "total_contactos": N})
-    # ----------------------------------------------------------------
     def exportar_json(self, ruta_destino):
-        return self._pendiente("exportar_json")
+        bloqueo = self._bloqueado()
+        if bloqueo:
+            return bloqueo
+        ok, msg, _ = self.contactos.generar_json()
+        if not ok:
+            return (False, msg, None)
+        return self._copiar_a(self.JSON_REGISTROS, ruta_destino, "Exportado a")
 
-    # ----------------------------------------------------------------
-    # >>> IMPLEMENTAR [5/8]: generar_reporte_pdf
-    # Recibe:   ruta_destino (str) -> ruta elegida por el usuario (.pdf)
-    # Debe:     generar un PDF con la lista de contactos
-    #           (sugerencia: librería reportlab o fpdf2; recuerda instalarla con pip)
-    # Devuelve: (True, "Reporte generado en ...", {"ruta": ..., "total_contactos": N})
-    # ----------------------------------------------------------------
     def generar_reporte_pdf(self, ruta_destino):
-        return self._pendiente("generar_reporte_pdf")
+        bloqueo = self._bloqueado()
+        if bloqueo:
+            return bloqueo
+        # El PDF se arma a partir de registros.json, así que se regenera antes
+        # para que el reporte nunca salga con datos viejos.
+        ok, msg, _ = self.contactos.generar_json()
+        if not ok:
+            return (False, msg, None)
+        ok, msg, _ = self.exportador.formatear_pdf()
+        if not ok:
+            return (False, msg, None)
+        return self._copiar_a(self.PDF_REPORTE, ruta_destino, "Reporte generado en")
 
     # ================================================================
     # HERRAMIENTAS
     # ================================================================
-
-    # ----------------------------------------------------------------
-    # >>> IMPLEMENTAR [6/8]: verificar_integridad
-    # Recibe:   nada
-    # Debe:     comprobar que el archivo BIN existe, no está corrupto
-    #           y que cada registro se puede leer (por ejemplo con un checksum/hash)
-    # Devuelve: (True, "Archivo íntegro", {"registros": N, "hash": "..."})
-    #           (False, "Se detectó corrupción: ...", None)
-    # ----------------------------------------------------------------
     def verificar_integridad(self):
-        return self._pendiente("verificar_integridad")
+        return self.herramientas.verificar_integridad()
 
-    # ----------------------------------------------------------------
-    # >>> IMPLEMENTAR [7/8]: crear_respaldo_zip
-    # Recibe:   ruta_destino (str) -> ruta elegida por el usuario (.zip)
-    # Debe:     comprimir self.archivo_bin dentro de un ZIP (módulo zipfile)
-    # Devuelve: (True, "Respaldo creado", {"ruta": ..., "tamano_bytes": ...})
-    # ----------------------------------------------------------------
-    def crear_respaldo_zip(self, ruta_destino):
-        return self._pendiente("crear_respaldo_zip")
+    def crear_respaldo_zip(self):
+        """El ZIP se guarda en respaldos/backup_[fecha].zip (lo decide Herramientas)."""
+        return self.herramientas.hacer_backup()
 
-    # ----------------------------------------------------------------
-    # >>> IMPLEMENTAR [8/8]: obtener_info_del_sistema
-    # Recibe:   nada
-    # Debe:     pega aquí la función que ya tienes (usa stat). Necesita en los
-    #           imports del archivo: "import os", "import stat" y tu méthod
-    #           auxiliar self._fmt_fecha(timestamp).
-    # Devuelve: (True, "Información del sistema obtenida", datos)
-    #           (False, "Error al obtener la información del sistema: ...", None)
-    # ----------------------------------------------------------------
     def obtener_info_del_sistema(self):
-        return self._pendiente("obtener_info_del_sistema")
+        return self.herramientas.obtener_info_del_sistema()
 
 
 # =====================================================================
@@ -320,11 +395,13 @@ class ContactosPage(QWidget):
         self.in_nombre = QLineEdit()
         self.in_telefono = QLineEdit()
         self.in_correo = QLineEdit()
+        self.in_ciudad = QLineEdit()
         boton = QPushButton("Agregar contacto")
         boton.clicked.connect(self.accion_agregar)
         form.addRow("Nombre:", self.in_nombre)
         form.addRow("Teléfono:", self.in_telefono)
         form.addRow("Correo:", self.in_correo)
+        form.addRow("Ciudad:", self.in_ciudad)
         form.addRow(boton)
         return w
 
@@ -332,16 +409,17 @@ class ContactosPage(QWidget):
         nombre = self.in_nombre.text().strip()
         telefono = self.in_telefono.text().strip()
         correo = self.in_correo.text().strip()
+        ciudad = self.in_ciudad.text().strip()
         if not nombre:
             QMessageBox.warning(self, "Datos incompletos", "El nombre es obligatorio.")
             return
 
-        # >>> LLAMADA [1/8]: agregar_contacto(nombre, telefono, correo)
-        ok, msg, datos = self.gestor.agregar_contacto(nombre, telefono, correo)
+        # >>> LLAMADA [1/8]: agregar_contacto(nombre, telefono, correo, ciudad)
+        ok, msg, datos = self.gestor.agregar_contacto(nombre, telefono, correo, ciudad)
 
         mostrar_resultado(self.salida, ok, msg, datos)
         if ok:
-            for campo in (self.in_nombre, self.in_telefono, self.in_correo):
+            for campo in (self.in_nombre, self.in_telefono, self.in_correo, self.in_ciudad):
                 campo.clear()
 
     # ---------------- Buscar por ID ----------------
@@ -376,7 +454,8 @@ class ContactosPage(QWidget):
         self.in_mod_nombre = QLineEdit()
         self.in_mod_telefono = QLineEdit()
         self.in_mod_correo = QLineEdit()
-        for campo in (self.in_mod_nombre, self.in_mod_telefono, self.in_mod_correo):
+        self.in_mod_ciudad = QLineEdit()
+        for campo in (self.in_mod_nombre, self.in_mod_telefono, self.in_mod_correo, self.in_mod_ciudad):
             campo.setPlaceholderText("(vacío = no cambiar)")
         boton = QPushButton("Modificar contacto")
         boton.clicked.connect(self.accion_modificar)
@@ -384,6 +463,7 @@ class ContactosPage(QWidget):
         form.addRow("Nuevo nombre:", self.in_mod_nombre)
         form.addRow("Nuevo teléfono:", self.in_mod_telefono)
         form.addRow("Nuevo correo:", self.in_mod_correo)
+        form.addRow("Nueva ciudad:", self.in_mod_ciudad)
         form.addRow(boton)
         return w
 
@@ -398,6 +478,7 @@ class ContactosPage(QWidget):
             "nombre": self.in_mod_nombre.text().strip(),
             "telefono": self.in_mod_telefono.text().strip(),
             "correo": self.in_mod_correo.text().strip(),
+            "ciudad": self.in_mod_ciudad.text().strip(),
         }
         nuevos_datos = {k: v for k, v in candidatos.items() if v}
         if not nuevos_datos:
@@ -409,7 +490,8 @@ class ContactosPage(QWidget):
 
         mostrar_resultado(self.salida, ok, msg, datos)
         if ok:
-            for campo in (self.in_mod_id, self.in_mod_nombre, self.in_mod_telefono, self.in_mod_correo):
+            for campo in (self.in_mod_id, self.in_mod_nombre, self.in_mod_telefono, self.in_mod_correo,
+                          self.in_mod_ciudad):
                 campo.clear()
 
 
@@ -496,12 +578,8 @@ class HerramientasPage(QWidget):
         mostrar_resultado(self.salida, ok, msg, datos)
 
     def accion_zip(self):
-        ruta, _ = QFileDialog.getSaveFileName(self, "Crear respaldo ZIP", "respaldo_contactos.zip", "ZIP (*.zip)")
-        if not ruta:
-            return
-
-        # >>> LLAMADA [7/8]: crear_respaldo_zip(ruta)
-        ok, msg, datos = self.gestor.crear_respaldo_zip(ruta)
+        # >>> LLAMADA [7/8]: crear_respaldo_zip()
+        ok, msg, datos = self.gestor.crear_respaldo_zip()
 
         mostrar_resultado(self.salida, ok, msg, datos)
 
@@ -551,7 +629,7 @@ class Sistema(QMainWindow):
         self.setFixedSize(720, 520)
 
         # Backend (aquí se conectan todas las funciones)
-        self.gestor = GestorContactos("contactos.bin")
+        self.gestor = GestorContactos()
 
         # Tema
         self.tema_manager = ColoresConfig()
@@ -628,7 +706,6 @@ class Sistema(QMainWindow):
 
     def aplicar_tema(self):
         QApplication.instance().setStyleSheet(self.tema_manager.generar_qss(self.modo))
-
 
 
 app = QApplication(sys.argv)
