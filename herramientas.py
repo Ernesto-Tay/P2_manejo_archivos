@@ -28,7 +28,7 @@ from hashlib import sha256
 from pathlib import Path
 import zipfile, stat
 import os
-import json, shutil, tempfile
+import json, shutil, tempfile, zlib
 from datetime import datetime
 class Herramientas:
     def __init__(self):
@@ -50,6 +50,15 @@ class Herramientas:
             for bloque in iter(lambda: f.read(65536), b""):
                 h.update(bloque)
         return h.hexdigest()
+
+    @staticmethod
+    def _calcular_crc32(ruta):
+        """Calcula el CRC-32 de un archivo (el mismo que guarda el ZIP) leyéndolo por bloques."""
+        crc = 0
+        with open(ruta, "rb") as f:
+            for bloque in iter(lambda: f.read(65536), b""):
+                crc = zlib.crc32(bloque, crc)
+        return crc
 
     @staticmethod
     def _fmt_fecha(timestamp):
@@ -326,6 +335,43 @@ class Herramientas:
             return (True, msg, datos)
         except (OSError, zipfile.BadZipFile) as e:
             return (False, f"Error al restaurar el backup: {e}", None)
+
+    def comparar_con_backup(self, ruta_zip):
+        """
+        Compara cada archivo de un backup ZIP con su original actual (tamaño y CRC-32).
+        Es de solo lectura: no modifica nada. Una diferencia es lo esperado si los datos
+        cambiaron después de crear el backup.
+        """
+        originales = {a.name: a for a in (self.archivo_bin, self.archivo_ids,
+                                          self.archivo_contactos, self.archivo_reporte)}
+        try:
+            filas = []
+            with zipfile.ZipFile(ruta_zip, "r") as z:
+                for info in z.infolist():
+                    nombre = Path(info.filename).name
+                    if info.is_dir() or nombre not in originales:
+                        continue
+                    orig = originales[nombre]
+                    fila = {"archivo": nombre, "tamano_backup": info.file_size,
+                            "tamano_comprimido": info.compress_size}
+                    if not orig.exists():
+                        fila.update(tamano_actual=None, estado="el original ya no existe")
+                    else:
+                        fila["tamano_actual"] = orig.stat().st_size
+                        igual = (fila["tamano_actual"] == info.file_size
+                                 and self._calcular_crc32(orig) == info.CRC)
+                        fila["estado"] = "igual" if igual else "DIFERENTE"
+                    filas.append(fila)
+
+            if not filas:
+                return (False, "El ZIP no contiene archivos reconocidos de este sistema", None)
+            todo_igual = all(f["estado"] == "igual" for f in filas)
+            if todo_igual:
+                return (True, "Los archivos actuales coinciden con el backup", {"archivos": filas})
+            return (False, "Hay diferencias entre los archivos actuales y el backup "
+                           "(es lo esperado si los datos cambiaron después de crearlo)", {"archivos": filas})
+        except (OSError, zipfile.BadZipFile) as e:
+            return (False, f"Error al comparar con el backup: {e}", None)
 
     def obtener_info_del_sistema(self):
         """Metadatos del archivo BIN de contactos: fechas, permisos, tamaño, etc."""

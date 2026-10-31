@@ -375,6 +375,21 @@ class GestorContactos:
             return (False, f"Se restauró el backup, pero el índice no se pudo cargar: {self.error_carga}", datos)
         return (ok, msg, datos)
 
+    def comparar_con_backup(self, ruta_zip):
+        """Compara los archivos actuales con los de un backup ZIP (no modifica nada)."""
+        ok, msg, datos = self.herramientas.comparar_con_backup(ruta_zip)
+        if not datos:
+            return (ok, msg, datos)
+        legible = {}
+        for f in datos["archivos"]:
+            detalle = f"backup: {f['tamano_backup']} bytes"
+            if f["tamano_actual"] is not None:
+                detalle += f", actual: {f['tamano_actual']} bytes"
+                if f["estado"] == "DIFERENTE" and f["tamano_actual"] == f["tamano_backup"]:
+                    detalle += ", mismo tamaño pero contenido distinto"
+            legible[f["archivo"]] = f"{f['estado']} ({detalle})"
+        return (ok, msg, legible)
+
 
 # =====================================================================
 #  PÁGINA: CONTACTOS (funcional)
@@ -585,6 +600,9 @@ class HerramientasPage(QWidget):
         self.boton_restaurar = QPushButton("Restaurar desde backup ZIP")
         self.boton_restaurar.clicked.connect(self.accion_restaurar)
         fila2.addWidget(self.boton_restaurar)
+        self.boton_comparar = QPushButton("Comparar con backup ZIP")
+        self.boton_comparar.clicked.connect(self.accion_comparar)
+        fila2.addWidget(self.boton_comparar)
         layout.addWidget(grupo)
 
         self.salida = crear_salida()
@@ -626,6 +644,16 @@ class HerramientasPage(QWidget):
 
         mostrar_resultado(self.salida, ok, msg, datos)
 
+    def accion_comparar(self):
+        ruta, _ = QFileDialog.getOpenFileName(self, "Comparar con backup", "respaldos", "Backups ZIP (*.zip)")
+        if not ruta:
+            return
+
+        # >>> LLAMADA [10/10]: comparar_con_backup(ruta)
+        ok, msg, datos = self.gestor.comparar_con_backup(ruta)
+
+        mostrar_resultado(self.salida, ok, msg, datos)
+
 
 # =====================================================================
 #  PÁGINA: AYUDA (SIMULADA - no necesita lógica)
@@ -645,7 +673,8 @@ class AyudaPage(QWidget):
             "• Contactos: agrega nuevos contactos, búscalos por ID o modifica sus datos.\n"
             "• Exportar: guarda tus contactos en un archivo JSON o genera un reporte en PDF.\n"
             "• Herramientas: verifica la integridad del archivo, crea un respaldo ZIP, "
-            "restaura los contactos desde un respaldo o consulta la información del archivo.\n"
+            "restaura los contactos desde un respaldo, compara los archivos con un respaldo "
+            "o consulta la información del archivo.\n"
             "• Vista > Modo oscuro: cambia entre el tema claro y el oscuro.\n\n"
             "Esta sección es solo demostrativa."
         )
@@ -716,6 +745,7 @@ class Sistema(QMainWindow):
         self._accion(m_herr, "Crear respaldo ZIP", lambda: self.ir_a(self.pag_herramientas))
         self._accion(m_herr, "Información del archivo", lambda: self.ir_a(self.pag_herramientas))
         self._accion(m_herr, "Restaurar desde backup", lambda: self.ir_a(self.pag_herramientas))
+        self._accion(m_herr, "Comparar con backup", lambda: self.ir_a(self.pag_herramientas))
 
         # Ayuda (simulado)
         m_ayuda = barra.addMenu("Ayuda")
