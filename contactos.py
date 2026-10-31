@@ -125,11 +125,15 @@ class ContactosMng:
         
         carpeta_datos = Path("info")
         carpeta_datos.mkdir(exist_ok=True)
-        with open(carpeta_datos / "contactos.dat", "r+b") as a:
-            a.seek(posc)
-            a.write(struct.pack(self.formato, id, n_nombre, tel, n_correo, n_ciudad))
+        try:
+            with open(carpeta_datos / "contactos.dat", "r+b") as a:
+                a.seek(posc)
+                a.write(struct.pack(self.formato, id, n_nombre, tel, n_correo, n_ciudad))
 
-        return True, "Contacto editado correctamente", None
+            return True, "Contacto editado correctamente", None
+        except UnicodeDecodeError:
+            return False, "Archivo corrompido o inexistente. Recupere datos desde un backup o cree nuevas entradas e intente de nuevo.", None
+
 
 
     def obtener_entrada(self, id):
@@ -138,16 +142,19 @@ class ContactosMng:
         if not id in self.info:
             return False, "El contacto no fué encontrado", None
         carpeta_datos = Path("info")
-        with open(carpeta_datos / "contactos.dat", "rb") as a:
-            posc = self.calcular_posicion(id)
-            a.seek(posc)
-            block = a.read(self.tamano_registro)
-            e_id, nombre, telefono, correo, ciudad = struct.unpack(self.formato, block)
-            nombre = nombre.decode("utf-8").rstrip(" \x00")
-            correo = correo.decode("utf-8").rstrip(" \x00")
-            ciudad = ciudad.decode("utf-8").rstrip(" \x00")
-            
-        return True, "Contacto encontrado", (e_id, nombre, telefono, correo, ciudad)
+        try:
+            with open(carpeta_datos / "contactos.dat", "rb") as a:
+                posc = self.calcular_posicion(id)
+                a.seek(posc)
+                block = a.read(self.tamano_registro)
+                e_id, nombre, telefono, correo, ciudad = struct.unpack(self.formato, block)
+                nombre = nombre.decode("utf-8").rstrip(" \x00")
+                correo = correo.decode("utf-8").rstrip(" \x00")
+                ciudad = ciudad.decode("utf-8").rstrip(" \x00")
+                
+            return True, "Contacto encontrado", (e_id, nombre, telefono, correo, ciudad)
+        except UnicodeDecodeError:
+            return False, "Archivo corrompido o inexistente. Recupere datos desde un backup o cree nuevas entradas e intente de nuevo.", None
 
 
     def generar_json(self):
