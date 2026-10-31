@@ -55,7 +55,7 @@ class ContactosMng:
                     if not bloque: break
                     id, _, _, _, _ = struct.unpack(self.formato, bloque)
                     new_json[id] = posc
-
+                self.info = new_json
             with open(carpeta_datos / "indice.json", "w", encoding="utf-8") as a:
                 json.dump(new_json, a, indent = 4, ensure_ascii=False)
                 return True
