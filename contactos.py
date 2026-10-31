@@ -104,13 +104,22 @@ class ContactosMng:
 
         carpeta_datos = Path("info")
         carpeta_datos.mkdir(exist_ok=True)
-        with open(carpeta_datos / "contactos.dat", "ab") as a:
-            a.seek(0, os.SEEK_END)
-            n_entrada = a.tell() // self.tamano_registro
-            a.write(struct.pack(self.formato, id, n_nombre, tel, n_correo, n_ciudad))
-            self.info[id] = n_entrada
-            self.actualizar_info_json()
-        return True, "Contacto añadido correctamente", None
+        try:
+            with open(carpeta_datos / "contactos.dat", "ab") as a:
+                a.seek(0, os.SEEK_END)
+                n_entrada = a.tell() // self.tamano_registro
+                a.write(struct.pack(self.formato, id, n_nombre, tel, n_correo, n_ciudad))
+                self.info[id] = n_entrada
+                self.actualizar_info_json()
+            return True, "Contacto añadido correctamente", None
+
+        except:
+            with open(carpeta_datos / "contactos.dat", "wb") as a:
+                a.write(struct.pack(self.formato, id, n_nombre, tel, n_correo, n_ciudad))
+                self.info[id] = 0
+                self.actualizar_info_json()
+            return False, "Inicio del sistema", None
+
 
 
     def modificar_entrada(self, id: int, nombre: str, tel: int, correo: str, ciudad: str):

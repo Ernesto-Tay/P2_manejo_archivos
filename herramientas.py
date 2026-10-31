@@ -28,6 +28,7 @@ from hashlib import sha256
 from pathlib import Path
 import zipfile, stat
 import os
+import json, shutil, tempfile
 from datetime import datetime
 class Herramientas:
     def __init__(self):
@@ -226,6 +227,105 @@ class Herramientas:
             return (True, "Información del backup obtenida", datos)
         except (OSError, zipfile.BadZipFile) as e:
             return (False, f"Error al leer el backup: {e}", None)
+
+    def restaurar_backup(self, ruta_zip, tamano_registro=None):
+        """
+        Recupera los archivos de datos desde un backup ZIP creado con hacer_backup().
+        1. Evalúa el ZIP (que no esté corrupto, que tenga lo obligatorio y que su hash coincida).
+        2. Extrae solo los archivos conocidos a una carpeta temporal y revisa que el índice
+           y el BIN sean coherentes entre sí (si se da tamano_registro).
+        3. Respalda el estado actual (respaldos/backup_[fecha].zip) por si hay que volver atrás.
+        4. Reemplaza los archivos; si algo falla a la mitad, deja todo como estaba.
+        5. Actualiza datos.sha256 con el hash del BIN restaurado.
+        Los archivos opcionales (JSON de contactos, PDF) que el backup no traiga se dejan intactos.
+        """
+        conocidos = {a.name: a for a in (self.archivo_bin, self.archivo_ids,
+                                         self.archivo_contactos, self.archivo_reporte)}
+        try:
+            ruta_zip = Path(ruta_zip)
+            ok, desc, datos_eval = self.evaluar_backup(ruta_zip)
+            if not ok:
+                return (False, f"Restauración cancelada. {desc}", datos_eval)
+
+            with tempfile.TemporaryDirectory(prefix="restaurar_") as carpeta:
+                carpeta = Path(carpeta)
+                extraidos = {}
+                with zipfile.ZipFile(ruta_zip, "r") as z:
+                    for info in z.infolist():
+                        # Solo se usa el nombre final y solo de los archivos conocidos:
+                        # así una ruta como "../../x" dentro del ZIP nunca se escribe en disco.
+                        nombre = Path(info.filename).name
+                        if info.is_dir() or nombre not in conocidos or nombre in extraidos:
+                            continue
+                        with z.open(info) as origen, open(carpeta / nombre, "wb") as destino:
+                            shutil.copyfileobj(origen, destino)
+                        extraidos[nombre] = carpeta / nombre
+
+                # --- el índice y el BIN del backup deben ser coherentes ---
+                try:
+                    indice = json.loads(extraidos[self.archivo_ids.name].read_text(encoding="utf-8"))
+                    posiciones = {int(k): int(v) for k, v in indice.items()}
+                except (ValueError, TypeError, AttributeError):
+                    return (False, "Restauración cancelada: el índice del backup está dañado", None)
+                if tamano_registro:
+                    n = len(posiciones)
+                    tam_bin = extraidos[self.archivo_bin.name].stat().st_size
+                    if tam_bin != n * tamano_registro or sorted(posiciones.values()) != list(range(n)):
+                        return (False, "Restauración cancelada: el índice del backup no coincide con "
+                                       "el archivo de contactos", {"contactos_en_indice": n, "bytes_bin": tam_bin})
+
+                # --- respaldo del estado actual, por si hay que volver atrás ---
+                previo = None
+                if self.archivo_bin.exists():
+                    ok_prev, desc_prev, datos_prev = self.hacer_backup(forzar=True)
+                    if not ok_prev:
+                        return (False, f"Restauración cancelada: no se pudo respaldar el estado actual. {desc_prev}", None)
+                    previo = datos_prev["ruta"]
+
+                # --- reemplazo de archivos, con reversa si algo falla ---
+                self.archivo_bin.parent.mkdir(exist_ok=True)
+                originales, reemplazados = {}, []
+                try:
+                    for nombre, origen in extraidos.items():
+                        destino = conocidos[nombre]
+                        if destino.exists():
+                            originales[destino] = carpeta / f"original_{nombre}"
+                            shutil.copyfile(destino, originales[destino])
+                        nuevo = destino.with_name(destino.name + ".nuevo")
+                        shutil.copyfile(origen, nuevo)
+                        os.replace(nuevo, destino)
+                        reemplazados.append(destino)
+                except OSError as e:
+                    for destino in reemplazados:
+                        if destino in originales:
+                            shutil.copyfile(originales[destino], destino)
+                        else:
+                            destino.unlink(missing_ok=True)
+                    for destino in conocidos.values():
+                        destino.with_name(destino.name + ".nuevo").unlink(missing_ok=True)
+                    return (False, f"Error al restaurar; los datos quedaron como estaban: {e}", None)
+
+            ok_hash, desc_hash, _ = self.actualizar_hash()
+            restaurados = sorted(extraidos)
+            conservados = sorted(n for n in conocidos if n not in extraidos and conocidos[n].exists())
+            datos = {
+                "backup": ruta_zip.name,
+                "contactos_restaurados": len(posiciones),
+                "archivos_restaurados": restaurados,
+                "archivos_conservados_sin_cambios": conservados,
+                "respaldo_del_estado_anterior": previo,
+                "hash_del_backup_verificado": datos_eval.get("hash_guardado") is not None,
+            }
+            msg = f"Backup restaurado: {len(posiciones)} contactos recuperados"
+            if previo:
+                msg += f". El estado anterior quedó guardado en {previo}"
+            if datos_eval.get("hash_guardado") is None:
+                msg += " (aviso: no había hash registrado para este backup, no se pudo comprobar su origen)"
+            if not ok_hash:
+                msg += f" (aviso: {desc_hash})"
+            return (True, msg, datos)
+        except (OSError, zipfile.BadZipFile) as e:
+            return (False, f"Error al restaurar el backup: {e}", None)
 
     def obtener_info_del_sistema(self):
         """Metadatos del archivo BIN de contactos: fechas, permisos, tamaño, etc."""

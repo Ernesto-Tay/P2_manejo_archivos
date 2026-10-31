@@ -198,14 +198,18 @@ class GestorContactos:
     PDF_REPORTE = CARPETA / "reporte_contactos.pdf"  # lo escribe pdf_maker.formatear_pdf()
     TEL_MAX = 2 ** 32 - 1  # el teléfono se guarda como entero sin signo de 4 bytes
     MSG_TELEFONO = ("El teléfono solo puede llevar dígitos, espacios y guiones, "
-                    f"y no puede superar el valor: {TEL_MAX:,}.")
+                    f"y no puede superar {TEL_MAX}.")
 
     def __init__(self):
         self.contactos = ContactosMng()
         self.exportador = pdf_maker()
         self.herramientas = Herramientas()
 
+        self._cargar_indice()
+
+    def _cargar_indice(self):
         self.error_carga = None
+        self.contactos.info = None
         try:
             self.contactos.cargar_posiciones()
         except (ValueError, OSError) as e:  # índice dañado o ilegible
@@ -362,6 +366,14 @@ class GestorContactos:
 
     def obtener_info_del_sistema(self):
         return self.herramientas.obtener_info_del_sistema()
+
+    def restaurar_backup(self, ruta_zip):
+        """Recupera los datos desde un backup ZIP y vuelve a cargar el índice en memoria."""
+        ok, msg, datos = self.herramientas.restaurar_backup(ruta_zip, self.contactos.tamano_registro)
+        self._cargar_indice()  # siempre: así la memoria refleja lo que quedó en disco
+        if ok and self.error_carga:
+            return (False, f"Se restauró el backup, pero el índice no se pudo cargar: {self.error_carga}", datos)
+        return (ok, msg, datos)
 
 
 # =====================================================================
@@ -556,7 +568,11 @@ class HerramientasPage(QWidget):
         layout.addWidget(crear_titulo("Herramientas"))
 
         grupo = QGroupBox("Mantenimiento del archivo de contactos")
-        fila = QHBoxLayout(grupo)
+        columna = QVBoxLayout(grupo)
+        fila = QHBoxLayout()
+        fila2 = QHBoxLayout()
+        columna.addLayout(fila)
+        columna.addLayout(fila2)
         self.boton_integridad = QPushButton("Verificar integridad")
         self.boton_zip = QPushButton("Crear respaldo ZIP")
         self.boton_info = QPushButton("Información del archivo")
@@ -566,6 +582,9 @@ class HerramientasPage(QWidget):
         fila.addWidget(self.boton_integridad)
         fila.addWidget(self.boton_zip)
         fila.addWidget(self.boton_info)
+        self.boton_restaurar = QPushButton("Restaurar desde backup ZIP")
+        self.boton_restaurar.clicked.connect(self.accion_restaurar)
+        fila2.addWidget(self.boton_restaurar)
         layout.addWidget(grupo)
 
         self.salida = crear_salida()
@@ -589,6 +608,24 @@ class HerramientasPage(QWidget):
 
         mostrar_resultado(self.salida, ok, msg, datos)
 
+    def accion_restaurar(self):
+        ruta, _ = QFileDialog.getOpenFileName(self, "Restaurar desde backup", "respaldos", "Backups ZIP (*.zip)")
+        if not ruta:
+            return
+        confirmar = QMessageBox.question(
+            self, "Restaurar backup",
+            "Los contactos actuales serán reemplazados por los del backup seleccionado.\n\n"
+            "Antes se guardará un respaldo del estado actual para poder volver atrás.\n\n¿Continuar?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        if confirmar != QMessageBox.StandardButton.Yes:
+            return
+
+        # >>> LLAMADA [9/9]: restaurar_backup(ruta)
+        ok, msg, datos = self.gestor.restaurar_backup(ruta)
+
+        mostrar_resultado(self.salida, ok, msg, datos)
+
 
 # =====================================================================
 #  PÁGINA: AYUDA (SIMULADA - no necesita lógica)
@@ -607,8 +644,8 @@ class AyudaPage(QWidget):
             "GUÍA DE USO (simulada)\n\n"
             "• Contactos: agrega nuevos contactos, búscalos por ID o modifica sus datos.\n"
             "• Exportar: guarda tus contactos en un archivo JSON o genera un reporte en PDF.\n"
-            "• Herramientas: verifica la integridad del archivo, crea un respaldo ZIP "
-            "o consulta la información del archivo.\n"
+            "• Herramientas: verifica la integridad del archivo, crea un respaldo ZIP, "
+            "restaura los contactos desde un respaldo o consulta la información del archivo.\n"
             "• Vista > Modo oscuro: cambia entre el tema claro y el oscuro.\n\n"
             "Esta sección es solo demostrativa."
         )
@@ -678,6 +715,7 @@ class Sistema(QMainWindow):
         self._accion(m_herr, "Verificar integridad", lambda: self.ir_a(self.pag_herramientas))
         self._accion(m_herr, "Crear respaldo ZIP", lambda: self.ir_a(self.pag_herramientas))
         self._accion(m_herr, "Información del archivo", lambda: self.ir_a(self.pag_herramientas))
+        self._accion(m_herr, "Restaurar desde backup", lambda: self.ir_a(self.pag_herramientas))
 
         # Ayuda (simulado)
         m_ayuda = barra.addMenu("Ayuda")
