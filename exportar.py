@@ -5,8 +5,12 @@ FUNCIONES:
 
 El PDF debe generarse en base al JSON, y también debe almacenar la fecha de creación
 """
+import json
+
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from pathlib import Path
+import os
 
 class pdf_maker:
     def __init__(self):
@@ -22,15 +26,23 @@ class pdf_maker:
         self.formato_normal = ["Helvetica", 12, 12]
 
     def tener_datos(self) -> bool:
-        """ Retorna True si ya se adjuntó la información del registro del JSON,
-            False si aún no ha sido añadida."""
-        return self.datos is not None
+        """ Retorna True si ya se generó el registro como un JSON,
+            False si aún no ha sido creado."""
+        path = Path("info")
+        try:
+            with open(path / "registros.json", "r", encoding="utf-8") as f:
+                self.datos = json.load(f)
+                return True
+        except FileNotFoundError:
+            return False
 
 
     def formatear_pdf(self):
         """ Crea el PDF de empleados. Es necesario crear el JSON de empleados y pasarlo como diccionario a \"self.datos\" para el funcionamiento. De lo contrario, esta función no hará nada."""
-        if not self.tener_datos(): return
-        pdf = canvas.Canvas("Reporte_contactos.pdf", pagesize = letter, initialFontSize = 12)
+        if not self.tener_datos(): return False
+        os.makedirs("info", exist_ok=True)
+        path = os.path.join("info", "reporte_contactos.pdf")
+        pdf = canvas.Canvas(path, pagesize = letter, initialFontSize = 12)
         y = self.altura
 
         # imprime el título del reporte
@@ -49,7 +61,7 @@ class pdf_maker:
         pdf.setFont(self.formato_normal[0], self.formato_normal[1])
 
         # imprime los datos, entrada por entrada (de acuerdo con el orden del JSON, basado en el orden de entrada)
-        for id, datos in self.datos:
+        for id, datos in self.datos.items():
             pdf.drawString(self.ancho_id, y, str(id))
             pdf.drawString(self.ancho_nombre, y, datos["nombre"])
             pdf.drawString(self.ancho_telefono, y, str(datos["telefono"]))
@@ -69,7 +81,5 @@ class pdf_maker:
                 y -= self.formato_encabezado[2]
                 pdf.setFont(self.formato_normal[0], self.formato_normal[1])
 
-
-
-
-    
+        pdf.save()
+        return True
