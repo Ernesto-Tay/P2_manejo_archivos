@@ -18,7 +18,8 @@ import struct
 import os
 from pathlib import Path
 import json
-from typing import Any, NamedTuple
+
+
 class ContactosMng:
     def __init__(self):
         self.formato = "<I32sI30s30s"
@@ -32,9 +33,10 @@ class ContactosMng:
         try:
             with open(carpeta_datos / "indice.json", "r", encoding="utf-8") as a:
                 datos = json.load(a)
-                self.info = datos
+                self.info = {int(k): v for k, v in datos.items()}
+                return True, "Índice cargado correctamente", None
         except FileNotFoundError:
-            return
+            return False, "No se encontró un índice, se iniciará con uno vacío."
 
     
     def calcular_posicion(self, id):
@@ -59,7 +61,7 @@ class ContactosMng:
             
 
     def anadir_entrada(self, id: int, nombre: str, tel: int, correo: str, ciudad: str):
-        if self.info.get(id, False):
+        if id in self.info:
             return False # ya existe una entrada 
         n_nombre = nombre.ljust(32, " ").encode("utf-8")
         n_correo = correo.ljust(30, " ").encode("utf-8")
@@ -70,9 +72,9 @@ class ContactosMng:
         with open(carpeta_datos / "contactos.dat", "ab") as a:
             a.seek(0, os.SEEK_END)
             n_entrada = a.tell() // self.tamano_registro
+            a.write(struct.pack(self.formato, id, n_nombre, tel, n_correo, n_ciudad))
             self.info[id] = n_entrada
             self.actualizar_info_json()
-            a.write(struct.pack(self.formato, id, n_nombre, tel, n_correo, n_ciudad))
 
 
     def modificar_entrada(self, id: int, nombre: str, tel: int, correo: str, ciudad: str):
@@ -82,7 +84,7 @@ class ContactosMng:
         n_ciudad = ciudad.ljust(30, " ").encode("utf-8")
 
         posc = self.calcular_posicion(id)
-        if not posc: return False
+        if posc is False: return False
         if posc is None: return None
         
         carpeta_datos = Path("info")
@@ -96,17 +98,13 @@ class ContactosMng:
     def obtener_entrada(self, id):
         """Busca la entrada en los datos cargados. Devuelve:\n1. False, si no hay datos cargados\n2. None, si no se encuentra la entrada en el modelo de datos\n3. Los datos de la entrada buscada, si es encontrda"""
         if self.info is None: return False
-        if not self.info.get(id, False):
+        if not id in self.info:
             return None
         carpeta_datos = Path("info")
         with open(carpeta_datos / "contactos.dat", "rb") as a:
             posc = self.calcular_posicion(id)
             a.seek(posc)
-            e_id = a.read(4).decode("utf-8")
-            nombre = a.read(24).decode("utf-8").rstrip()
-            telefono = a.read(11).decode("utf-8").rstrip()
-            correo = a.read(30).decode("utf-8").rstrip()
-            ciudad = a.read(30).decode("utf-8").rstrip()
+            e_id, nombre, telefono, correo, ciudad = struct.unpack(self.formato, a)
             
         return e_id, nombre, telefono, correo, ciudad
 
@@ -119,8 +117,8 @@ class ContactosMng:
                 resultado = {}
                 posc = 0
                 while True:
-                    a.seek(posc)
-
+                    a.seek(posc*100)
+                    posc += 1
                     e_id = a.read(4).decode("utf-8")
                     if not e_id: break
                     nombre = a.read(32).decode("utf-8").rstrip()
