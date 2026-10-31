@@ -1,0 +1,20 @@
+{
+    "1": {
+        "nombre": "Juanito",
+        "telefono": 12345678,
+        "correo": "juanito@gmail.com",
+        "ciudad": "Qurtzaltenango"
+    },
+    "2": {
+        "nombre": "wasd",
+        "telefono": 343244342,
+        "correo": "jajsjsa",
+        "ciudad": "uwu"
+    },
+    "3": {
+        "nombre": "wasaaa",
+        "telefono": 12312345,
+        "correo": "wasd@gmail.com",
+        "ciudad": "wertyu"
+    }
+}
