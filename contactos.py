@@ -36,10 +36,35 @@ class ContactosMng:
                 self.info = {int(k): v for k, v in datos.items()}
                 return True, "Índice cargado correctamente", None
         except FileNotFoundError:
-            self.info = {}
-            return False, "No se encontró un índice, se iniciará el sistema con uno vacío.", None
+            trial2 = self.rearmar_json()
+            if not trial2:
+                self.info = {}
+                return False, "No se encontró un índice, se iniciará el sistema con uno vacío.", None
+            else:
+                return True, "El json fué corrompido o eliminado, por lo que se generó otro JSON y se cargaron los índices desde el archivo binario.", None
 
-    
+
+    def rearmar_json(self):
+        carpeta_datos = Path("info")
+        try:
+            with open(carpeta_datos / "contactos.dat", "rb") as a:
+                new_json = {}
+                posc = 1
+                while True:
+                    bloque = a.read(self.tamano_registro)
+                    if not bloque: break
+                    id, _, _, _, _ = struct.unpack(self.formato, bloque)
+                    new_json[id] = posc
+
+            with open(carpeta_datos / "indice.json", "w", encoding="utf-8") as a:
+                json.dump(new_json, a, indent = 4, ensure_ascii=False)
+                return True
+
+        except Exception as e:
+            return False
+
+
+
     def calcular_posicion(self, id):
         """ Calcula la posición de una ID. Retorna \n1. False si no hay info cargada aún\n2. None si la posición no fue encontrada en los datos\n3. la cantidad de bytes que deben recorrerse antes de llegar al punto óptimo"""
         if self.info is None:

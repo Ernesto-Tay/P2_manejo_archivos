@@ -198,7 +198,7 @@ class GestorContactos:
     PDF_REPORTE = CARPETA / "reporte_contactos.pdf"  # lo escribe pdf_maker.formatear_pdf()
     TEL_MAX = 2 ** 32 - 1  # el teléfono se guarda como entero sin signo de 4 bytes
     MSG_TELEFONO = ("El teléfono solo puede llevar dígitos, espacios y guiones, "
-                    f"y no puede superar {TEL_MAX}.")
+                    f"y no puede superar el valor: {TEL_MAX:,}.")
 
     def __init__(self):
         self.contactos = ContactosMng()
